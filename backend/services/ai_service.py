@@ -1,6 +1,20 @@
+import os
+import asyncio
 import requests
+from openai import OpenAI
 
-def generate_ai_schedule(data):
+
+# Featherless / OpenAI client
+client = OpenAI(
+    api_key=os.getenv("FEATHERLESS_API_KEY"),
+    base_url="https://api.featherless.ai/v1"
+)
+
+
+# -----------------------------
+# AI SCHEDULE GENERATION
+# -----------------------------
+async def generate_ai_schedule(data):
 
     prompt = f"""
     Patient chronotype: {data.chronotype}
@@ -15,32 +29,75 @@ def generate_ai_schedule(data):
     Return JSON with schedule and lifestyle.
     """
 
-    response = requests.post(
-        "https://api.featherless.ai/generate",
-        json={"prompt": prompt}
+    loop = asyncio.get_event_loop()
+
+    try:
+        response = await loop.run_in_executor(
+            None,
+            lambda: requests.post(
+                "https://api.featherless.ai/generate",
+                json={"prompt": prompt}
+            )
+        )
+
+        result = response.json()
+
+        return result
+
+    except Exception as e:
+        print("AI schedule generation error:", e)
+
+        # fallback (hackathon safe)
+        schedule = []
+        for med in data.medications:
+            schedule.append({
+                "drug": med,
+                "time": "08:00"
+            })
+
+        return {
+            "schedule": schedule,
+            "lifestyle": [
+                "eat breakfast within 1 hour of waking",
+                "avoid late night meals",
+                "maintain consistent sleep schedule"
+            ]
+        }
+
+
+# -----------------------------
+# AI EXPLANATION GENERATION
+# -----------------------------
+async def generate_explanation(context: dict) -> str:
+    """
+    Generate a human-readable explanation of schedule & drug info.
+    """
+
+    prompt = (
+        "You are a medical assistant. "
+        "Given the schedule and medication details below, "
+        "write a clear explanation for the patient:\n\n"
+        f"{context}"
     )
 
-    result = response.json()
+    loop = asyncio.get_event_loop()
 
-    return result
+    try:
+        response = await loop.run_in_executor(
+            None,
+            lambda: client.chat.completions.create(
+                model="Qwen/Qwen2.5-7B-Instruct",
+                messages=[
+                    {"role": "system", "content": "You are a helpful medical assistant."},
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.7,
+                max_tokens=300
+            )
+        )
 
-# def generate_ai_schedule(data):
+        return response.choices[0].message.content.strip()
 
-#     schedule = []
-
-#     for med in data.medications:
-#         schedule.append({
-#             "drug": med,
-#             "time": "08:00"
-#         })
-
-#     result = {
-#         "schedule": schedule,
-#         "lifestyle": [
-#             "eat breakfast within 1 hour of waking",
-#             "avoid late night meals",
-#             "maintain consistent sleep schedule"
-#         ]
-#     }
-
-#     return result
+    except Exception as e:
+        print("AI explanation error:", e)
+        return "Explanation unavailable due to AI service error."

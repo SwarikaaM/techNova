@@ -1,10 +1,15 @@
-from database import schedules_collection
+from database import get_schedules_collection
 
-def get_doctor_patients(doctor_code):
 
-    patients = schedules_collection.find({
+async def get_doctor_patients(doctor_code):
+
+    schedules_collection = get_schedules_collection()
+
+    cursor = schedules_collection.find({
         "shared_with_doctor": doctor_code
     })
+
+    patients = await cursor.to_list(length=100)
 
     result = []
 
@@ -15,9 +20,11 @@ def get_doctor_patients(doctor_code):
     return result
 
 
-def modify_schedule(patient_id, drug, new_time):
+async def modify_schedule(patient_id, drug, new_time):
 
-    schedules_collection.update_one(
+    schedules_collection = get_schedules_collection()
+
+    await schedules_collection.update_one(
         {"patient_id": patient_id, "schedule.drug": drug},
         {
             "$set": {

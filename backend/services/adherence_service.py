@@ -1,7 +1,10 @@
-from database import adherence_collection
+from database import get_adherence_collection
 from datetime import date
 
-def log_medication(patient_id, drug, taken):
+
+async def log_medication(patient_id, drug, taken):
+
+    adherence_collection = get_adherence_collection()
 
     log = {
         "patient_id": patient_id,
@@ -10,6 +13,6 @@ def log_medication(patient_id, drug, taken):
         "taken": taken
     }
 
-    adherence_collection.insert_one(log)
+    await adherence_collection.insert_one(log)
 
     return {"message": "Log saved"}

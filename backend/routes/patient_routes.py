@@ -2,15 +2,18 @@ from fastapi import APIRouter
 from models.schedule_model import ScheduleRequest
 from services.ai_service import generate_ai_schedule
 from services.adherence_service import log_medication
-from database import schedules_collection
+from database import get_schedules_collection
+from database import db_connection
 
 router = APIRouter()
 
 
 @router.post("/generate-schedule")
-def generate_schedule(data: ScheduleRequest):
+async def generate_schedule(data: ScheduleRequest):
 
-    ai_result = generate_ai_schedule(data)
+    schedules_collection = get_schedules_collection()
+
+    ai_result = await generate_ai_schedule(data)
 
     schedule_doc = {
         "patient_id": "123",
@@ -22,23 +25,6 @@ def generate_schedule(data: ScheduleRequest):
         "status": "ai_generated"
     }
 
-    schedules_collection.insert_one(schedule_doc)
+    await schedules_collection.insert_one(schedule_doc)
 
     return ai_result
-
-
-@router.post("/share-with-doctor")
-def share_with_doctor(patient_id: str, doctor_code: str):
-
-    schedules_collection.update_one(
-        {"patient_id": patient_id},
-        {"$set": {"shared_with_doctor": doctor_code}}
-    )
-
-    return {"message": "Shared with doctor"}
-
-
-@router.post("/log-medication")
-def log_med(drug: str, taken: bool):
-
-    return log_medication("123", drug, taken)
