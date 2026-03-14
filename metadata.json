@@ -1,0 +1,5 @@
+{
+  "name": "AI ChronoMed",
+  "description": "Circadian-Aware Medication Optimizer using AI to suggest optimal medication timing based on chronotype and health data.",
+  "requestFramePermissions": []
+}
