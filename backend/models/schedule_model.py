@@ -1,13 +1,23 @@
+
 from pydantic import BaseModel
 from typing import List, Optional
 
 
 class ScheduleRequest(BaseModel):
-    chronotype: str
-    diseases: List[str] = []
-    medications: List[str] = []
-    disease_peaks: List[str] = []
+
+    wake_time: str
+    sleep_time: str
+    night_shift: bool
+    caffeine_intake: str
+
     age: int
     weight: int
+    height: int
+
     gender: str
-    cycle_phase: Optional[str] = None
+    menstrual_phase: Optional[str] = None
+
+    heart_rate: Optional[str] = None
+
+    diseases: List[str] = []
+    medications: List[str] = []

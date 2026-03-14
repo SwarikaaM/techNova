@@ -1,10 +1,14 @@
+
 import os
 import asyncio
 import requests
 from openai import OpenAI
 
+from services.timing_service import recommend_time
+from services.interaction_service import check_interaction
+from services.side_effect_service import get_side_effects
 
-# Featherless / OpenAI client
+
 client = OpenAI(
     api_key=os.getenv("FEATHERLESS_API_KEY"),
     base_url="https://api.featherless.ai/v1"
@@ -16,20 +20,70 @@ client = OpenAI(
 # -----------------------------
 async def generate_ai_schedule(data):
 
-    prompt = f"""
-    Patient chronotype: {data.chronotype}
-    Diseases: {data.diseases}
-    Medications: {data.medications}
-    Age: {data.age}
-    Weight: {data.weight}
-    Gender: {data.gender}
-    Cycle phase: {data.cycle_phase}
+    medications = data.medications
+    schedule = []
 
-    Generate medication timing based on circadian rhythm.
-    Return JSON with schedule and lifestyle.
-    """
+    # ---------------------------------
+    # 1. RULE BASED TIMING (Chronotherapy)
+    # ---------------------------------
+    for med in medications:
+
+        timing = recommend_time(
+            med,
+            data.wake_time,
+            data.sleep_time
+        )
+
+        side_effects = await get_side_effects(med)
+
+        schedule.append({
+            "name": med,
+            "time": timing["recommended_time"],
+            "reason": timing["reason"],
+            "side_effects": side_effects,
+            "taken": False
+        })
+
+    # ---------------------------------
+    # 2. DRUG INTERACTION CHECK
+    # ---------------------------------
+    interaction_warning = None
+
+    if len(medications) >= 2:
+        interaction_warning = await check_interaction(
+            medications[0],
+            medications[1]
+        )
+
+    # ---------------------------------
+    # 3. AI LIFESTYLE RECOMMENDATIONS
+    # ---------------------------------
+    prompt = f"""
+You are a clinical chronotherapy assistant.
+
+Patient Data:
+Chronotype: {data.chronotype}
+Wake time: {data.wake_time}
+Sleep time: {data.sleep_time}
+Night shift: {data.night_shift}
+Caffeine intake: {data.caffeine_intake}
+Diseases: {data.diseases}
+Medications: {data.medications}
+
+Give lifestyle recommendations for circadian health.
+
+Return JSON:
+{{
+ "lifestyle":[
+  "recommendation 1",
+  "recommendation 2"
+ ]
+}}
+"""
 
     loop = asyncio.get_event_loop()
+
+    lifestyle = []
 
     try:
         response = await loop.run_in_executor(
@@ -42,41 +96,33 @@ async def generate_ai_schedule(data):
 
         result = response.json()
 
-        return result
+        lifestyle = result.get("lifestyle", [])
 
     except Exception as e:
-        print("AI schedule generation error:", e)
 
-        # fallback (hackathon safe)
-        schedule = []
-        for med in data.medications:
-            schedule.append({
-                "drug": med,
-                "time": "08:00"
-            })
+        print("AI lifestyle generation error:", e)
 
-        return {
-            "schedule": schedule,
-            "lifestyle": [
-                "eat breakfast within 1 hour of waking",
-                "avoid late night meals",
-                "maintain consistent sleep schedule"
-            ]
-        }
+        lifestyle = [
+            "Maintain a consistent sleep schedule.",
+            "Avoid caffeine late in the day.",
+            "Expose yourself to morning sunlight.",
+            "Eat meals at consistent times daily."
+        ]
+
+    return {
+        "schedule": schedule,
+        "interaction_warning": interaction_warning,
+        "lifestyle": lifestyle
+    }
 
 
 # -----------------------------
 # AI EXPLANATION GENERATION
 # -----------------------------
 async def generate_explanation(context: dict) -> str:
-    """
-    Generate a human-readable explanation of schedule & drug info.
-    """
 
     prompt = (
-        "You are a medical assistant. "
-        "Given the schedule and medication details below, "
-        "write a clear explanation for the patient:\n\n"
+        "Explain the medication schedule and recommendations in simple language:\n\n"
         f"{context}"
     )
 
@@ -88,8 +134,14 @@ async def generate_explanation(context: dict) -> str:
             lambda: client.chat.completions.create(
                 model="Qwen/Qwen2.5-7B-Instruct",
                 messages=[
-                    {"role": "system", "content": "You are a helpful medical assistant."},
-                    {"role": "user", "content": prompt},
+                    {
+                        "role": "system",
+                        "content": "You are a helpful medical assistant."
+                    },
+                    {
+                        "role": "user",
+                        "content": prompt
+                    },
                 ],
                 temperature=0.7,
                 max_tokens=300
